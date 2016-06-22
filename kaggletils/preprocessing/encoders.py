@@ -13,8 +13,8 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import LabelEncoder
 from statsmodels.distributions import ECDF
 
-from estimators import LikelihoodEstimator
-from utils.data import is_numpy
+from ..estimators import LikelihoodEstimator
+from ..utils.data import is_numpy
 
 
 class CountEncoder(BaseEstimator, TransformerMixin):
@@ -74,7 +74,6 @@ class LikelihoodEncoder(BaseEstimator, TransformerMixin):
         self.estimators = []
 
     def fit(self, x, y):
-        print x.shape
         if len(x.shape) == 1:
             x = x.reshape(-1, 1)
         ncols = x.shape[1]
@@ -138,9 +137,10 @@ class LikelihoodEncoder(BaseEstimator, TransformerMixin):
         likelihoods = None
 
         for i in range(ncols):
-            lh = self.estimators[i].predict(x[:, i])
-            if self.nclass <= 2:
-                lh = lh.T[1].reshape(-1, 1)
+            lh = self.estimators[i].predict(x[:, i], noise=True).reshape(-1, 1)
+            # lh = self.estimators[i].predict_proba(x[:, i])
+            # if self.nclass <= 2:
+            #     lh = lh.T[1].reshape(-1, 1)
             likelihoods = np.hstack((lh,)) if likelihoods is None else np.hstack((likelihoods, lh))
         return likelihoods
 
