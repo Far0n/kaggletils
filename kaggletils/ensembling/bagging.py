@@ -6,6 +6,7 @@
 from datetime import datetime
 
 import numpy as np
+from scipy.sparse import spmatrix
 from sklearn.metrics import log_loss
 
 
@@ -32,17 +33,17 @@ class Bagger(object):
         self.nclass = 1 if self.regression else np.unique(y_train).shape[0]
         self.pdim = 1 if self.nclass <= 2 else self.nclass
 
-        if not isinstance(x_train, np.ndarray):
+        if not (isinstance(x_train, np.ndarray) or isinstance(x_train, spmatrix)):
             x_train = np.array(x_train)
-        if not isinstance(y_train, np.ndarray):
+        if not (isinstance(y_train, np.ndarray) or isinstance(y_train, spmatrix)):
             y_train = np.array(y_train)
-        if not isinstance(x_test, np.ndarray) and x_test is not None:
+        if not (isinstance(x_test, np.ndarray) or isinstance(x_test, spmatrix)) and x_test is not None:
             x_test = np.array(x_test)
-        if not isinstance(x_test, np.ndarray) and x_test is not None:
+        if not (isinstance(x_probe, np.ndarray) or isinstance(x_probe, spmatrix)) and x_probe is not None:
             x_probe = np.array(x_probe)
-        if not isinstance(y_probe, np.ndarray) and y_probe is not None:
+        if not (isinstance(y_probe, np.ndarray) or isinstance(y_probe, spmatrix)) and y_probe is not None:
             y_probe = np.array(y_probe)
-        if self.nclass <= 2:
+        if len(y_train.shape) == 2 and y_train.shape[1] == 1:
             y_train = y_train.ravel()
 
         if self.verbose:
