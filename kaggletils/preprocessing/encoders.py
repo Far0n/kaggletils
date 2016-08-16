@@ -13,8 +13,8 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import LabelEncoder
 from statsmodels.distributions import ECDF
 
-from estimators import LikelihoodEstimator
-from utils.data import is_numpy
+from ..estimators import LikelihoodEstimator
+from ..utils.data import is_numpy
 
 
 class CountEncoder(BaseEstimator, TransformerMixin):

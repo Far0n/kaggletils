@@ -84,7 +84,7 @@ class CrossValidator(object):
         self.nprobe = None
 
     def run_cv(self, x_train, y_train, x_test=None, x_probe=None, y_probe=None,
-               sample_weights=None, subset_column=None, subset_values=None):
+               sample_weights=None, subset_column=None, subset_values=None, ccv_features=None):
         ts = datetime.now()
         self.ntrain = x_train.shape[0]
         self.ntest = 0 if x_test is None else x_test.shape[0]
@@ -94,6 +94,7 @@ class CrossValidator(object):
         self.pdim = 1 if self.nclass <= 2 else self.nclass
 
         if not (isinstance(x_train, np.ndarray) or isinstance(x_train, spmatrix)):
+            subset_column = x_train.columns.get_loc(subset_column) if subset_column is not None else None
             x_train = np.array(x_train)
         if not (isinstance(y_train, np.ndarray) or isinstance(y_train, spmatrix)):
             y_train = np.array(y_train)
@@ -118,7 +119,7 @@ class CrossValidator(object):
                     format(x_train.shape, x_test.shape, x_probe.shape)
 
         if subset_column is None:
-            self.__run_cv(x_train, y_train, x_test, x_probe, y_probe, sample_weights)
+            self.__run_cv(x_train, y_train, x_test, x_probe, y_probe, sample_weights, ccv_features)
             return
 
         self.subsets = True
@@ -130,7 +131,9 @@ class CrossValidator(object):
             subset_values = np.unique(x_train[:, subset_column])
 
         cv_scores = []
+        cv_scores_weights = []
         cv_scores_probe = []
+        cv_scores_probe_weights = []
 
         if self.verbose:
             print '{0} Subsets (subset column: {1}, subset values: {2})' \
@@ -153,12 +156,21 @@ class CrossValidator(object):
                 else:
                     print 'Subset CV (column: {0}, value: {1}, ntrain: {2})' \
                         .format(subset_column, val, x_train_sub.shape[0])
+            self.folds = None
             self.__run_cv(x_train_sub, y_train_sub, x_test_sub, x_probe_sub, y_probe_sub, weights_sub)
             oof_train[train_ix] = self.oof_train
             oof_test[test_ix] = self.oof_test
             oof_probe[probe_ix] = self.oof_probe
             cv_scores.append(self.cv_scores)
+            cv_scores_weights.append(x_train_sub.shape[0])
             cv_scores_probe.append(self.cv_scores_probe)
+            if self.nprobe > 0:
+                cv_scores_probe_weights.append(x_probe_sub.shape[0])
+
+        cv_scores = np.average(cv_scores, axis=0, weights=cv_scores_weights)
+        if self.nprobe > 0:
+            cv_scores_probe = np.average(cv_scores_probe, axis=0, weights=cv_scores_probe_weights)
+
 
         te = datetime.now()
         elapsed_time = (te - ts)
@@ -188,19 +200,25 @@ class CrossValidator(object):
             print 'CV-Std:  {0:.12f}'.format(self.cv_std)
             print 'Runtime: {0}'.format(elapsed_time)
 
-    def __run_cv(self, x_train, y_train, x_test=None, x_probe=None, y_probe=None, sample_weights=None):
+    def __run_cv(self, x_train, y_train, x_test=None, x_probe=None, y_probe=None, sample_weights=None, ccv_features=None):
         ts = datetime.now()
         ntrain = x_train.shape[0]
         ntest = 0 if x_test is None else x_test.shape[0]
         nprobe = 0 if x_probe is None else x_probe.shape[0]
         prefix = '\t' if self.subsets else ''
 
+        if ccv_features is not None:
+            if ntest > 0:
+                x_test = np.column_stack((x_test, ccv_features[1][-1]))
+            if nprobe > 0:
+                x_probe = np.column_stack((x_probe, ccv_features[2][-1]))
+
         if self.folds is None:
             if self.nfolds > 1:
                 if self.stratified:
                     self.folds = StratifiedKFold(y_train, n_folds=self.nfolds, shuffle=True, random_state=self.seed)
                 else:
-                    self.folds = KFold(self.ntrain, n_folds=self.nfolds, shuffle=True, random_state=self.seed)
+                    self.folds = KFold(ntrain, n_folds=self.nfolds, shuffle=True, random_state=self.seed)
             else:
                 self.folds = [(np.arange(ntrain), [])]
 
@@ -227,6 +245,10 @@ class CrossValidator(object):
                 y_train_oof = y_train[train_ix]
                 x_valid_oof = x_train[valid_ix]
                 y_valid_oof = y_train[valid_ix]
+
+                if ccv_features is not None:
+                    x_train_oof = np.column_stack((x_train_oof, ccv_features[0][i]))
+                    x_valid_oof = np.column_stack((x_valid_oof, ccv_features[1][i]))
 
                 if self.verbose:
                     print prefix + 'Fold {0:02d}: X_train: {1}, X_valid: {2}'. \
@@ -298,6 +320,8 @@ class CrossValidator(object):
                 if nprobe > 0:
                     oof_probe[:, :] = oof_probe_folds.mean(axis=0)
             else:
+                if ccv_features is not None:
+                    x_train = np.column_stack((x_train, ccv_features[0][-1]))
                 if self.verbose and self.nfolds > 1:
                     print prefix + 'CV-Mean: {0:.12f}'.format(self.cv_mean)
                     print prefix + 'CV-Std:  {0:.12f}'.format(self.cv_std)
