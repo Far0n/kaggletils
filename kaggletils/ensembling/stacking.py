@@ -10,7 +10,8 @@ from datetime import datetime
 from multiprocessing import Pool
 
 import numpy as np
-from scipy.sparse import spmatrix
+from scipy import sparse
+from scipy.sparse import spmatrix, csr_matrix
 from sklearn.cross_validation import KFold, StratifiedKFold
 from sklearn.metrics import log_loss
 
@@ -92,6 +93,7 @@ class CrossValidator(object):
         self.sample_weights = sample_weights
         self.nclass = 1 if self.regression else np.unique(y_train).shape[0]
         self.pdim = 1 if self.nclass <= 2 else self.nclass
+        self.sparse_input = isinstance(x_train, spmatrix)
 
         if not (isinstance(x_train, np.ndarray) or isinstance(x_train, spmatrix)):
             subset_column = x_train.columns.get_loc(subset_column) if subset_column is not None else None
@@ -171,7 +173,6 @@ class CrossValidator(object):
         if self.nprobe > 0:
             cv_scores_probe = np.average(cv_scores_probe, axis=0, weights=cv_scores_probe_weights)
 
-
         te = datetime.now()
         elapsed_time = (te - ts)
 
@@ -200,7 +201,8 @@ class CrossValidator(object):
             print 'CV-Std:  {0:.12f}'.format(self.cv_std)
             print 'Runtime: {0}'.format(elapsed_time)
 
-    def __run_cv(self, x_train, y_train, x_test=None, x_probe=None, y_probe=None, sample_weights=None, ccv_features=None):
+    def __run_cv(self, x_train, y_train, x_test=None, x_probe=None, y_probe=None, sample_weights=None,
+                 ccv_features=None):
         ts = datetime.now()
         ntrain = x_train.shape[0]
         ntest = 0 if x_test is None else x_test.shape[0]
@@ -209,9 +211,11 @@ class CrossValidator(object):
 
         if ccv_features is not None:
             if ntest > 0:
-                x_test = np.column_stack((x_test, ccv_features[1][-1]))
+                x_test = np.column_stack((x_test, ccv_features[1][-1])) if not self.sparse_input \
+                    else sparse.hstack((x_test, ccv_features[1][-1].reshape(x_test.shape[0], -1)), format='csr')
             if nprobe > 0:
-                x_probe = np.column_stack((x_probe, ccv_features[2][-1]))
+                x_probe = np.column_stack((x_probe, ccv_features[2][-1])) if not self.sparse_input \
+                    else sparse.hstack((x_probe, ccv_features[2][-1].reshape(x_probe.shape[0], -1)), format='csr')
 
         if self.folds is None:
             if self.nfolds > 1:
@@ -247,8 +251,10 @@ class CrossValidator(object):
                 y_valid_oof = y_train[valid_ix]
 
                 if ccv_features is not None:
-                    x_train_oof = np.column_stack((x_train_oof, ccv_features[0][i]))
-                    x_valid_oof = np.column_stack((x_valid_oof, ccv_features[1][i]))
+                    x_train_oof = np.column_stack((x_train_oof, ccv_features[0][i])) if not self.sparse_input \
+                        else sparse.hstack((x_train_oof, ccv_features[0][i].reshape(x_train_oof.shape[0], -1)), format='csr')
+                    x_valid_oof = np.column_stack((x_valid_oof, ccv_features[1][i])) if not self.sparse_input \
+                        else sparse.hstack((x_valid_oof, ccv_features[1][i].reshape(x_valid_oof.shape[0], -1)), format='csr')
 
                 if self.verbose:
                     print prefix + 'Fold {0:02d}: X_train: {1}, X_valid: {2}'. \
@@ -321,7 +327,9 @@ class CrossValidator(object):
                     oof_probe[:, :] = oof_probe_folds.mean(axis=0)
             else:
                 if ccv_features is not None:
-                    x_train = np.column_stack((x_train, ccv_features[0][-1]))
+                    x_train = np.column_stack((x_train, ccv_features[0][-1])) if not self.sparse_input \
+                        else sparse.hstack((x_train, ccv_features[0][-1].reshape(x_train.shape[0], -1)), format='csr')
+
                 if self.verbose and self.nfolds > 1:
                     print prefix + 'CV-Mean: {0:.12f}'.format(self.cv_mean)
                     print prefix + 'CV-Std:  {0:.12f}'.format(self.cv_std)
